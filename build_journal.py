@@ -419,28 +419,103 @@ def make_cover(cfg: dict, date: dt.date, rubriques: list[dict]) -> bytes:
 # -------------------------------------------------------------------- build
 
 CSS = """
-body { font-family: serif; line-height: 1.4; margin: 0 2%; }
-h1 { font-size: 1.5em; line-height: 1.2; margin: 0.4em 0 0.3em 0; }
-h2 { font-size: 1.2em; margin: 1.2em 0 0.4em 0; }
-h3 { font-size: 1.05em; margin: 1em 0 0.3em 0; }
-p { margin: 0 0 0.7em 0; text-align: justify; }
-p.meta { font-size: 0.85em; color: #444; text-align: left; margin-bottom: 0.8em; }
-p.chapeau { font-style: italic; font-size: 1.05em; text-align: left;
-            border-left: 3px solid #000; padding-left: 0.6em; margin: 0.6em 0 1em 0; }
-p.note { font-size: 0.85em; color: #444; text-align: left; margin-top: 1.5em;
-         border-top: 1px solid #999; padding-top: 0.5em; }
-p.lien { font-size: 0.8em; color: #444; text-align: left; word-break: break-all; }
-img.illustration { max-width: 100%; height: auto; margin: 0.4em 0 1em 0; }
-blockquote { margin: 0.6em 1.2em; font-style: italic; }
-.sommaire h2 { border-bottom: 1px solid #000; padding-bottom: 0.15em; }
-.sommaire p.entree { text-align: left; margin: 0 0 0.9em 0; }
-.sommaire p.entree a { text-decoration: none; font-weight: bold; }
-.sommaire p.entree span.chapeau { display: block; font-size: 0.92em; color: #333; }
-.sommaire p.entree span.source { font-size: 0.8em; color: #555; }
-.edito { font-style: italic; margin-bottom: 1.4em; }
-.sommaire h1 { margin-bottom: 0.1em; }
-.sommaire p.date { color: #444; margin-bottom: 1.2em; text-align: left; }
+@page { margin: 0; }
+body { font-family: serif; line-height: 1.45; margin: 0 3%; text-align: left; }
+
+/* --- Article --- */
+p.kicker { font-family: sans-serif; font-size: 0.78em; letter-spacing: 0.12em;
+           text-transform: uppercase; color: #333; margin: 0.4em 0 0.3em 0;
+           border-bottom: 1px solid #000; padding-bottom: 0.25em; text-align: left; }
+h1.titre { font-size: 1.55em; line-height: 1.15; font-weight: bold;
+           margin: 0.35em 0 0.35em 0; text-align: left; }
+p.meta { font-family: sans-serif; font-size: 0.78em; color: #444; margin: 0 0 0.9em 0; text-align: left; }
+p.chapeau { font-size: 1.02em; font-weight: bold; line-height: 1.35;
+            margin: 0 0 1em 0; text-align: left; }
+img.illustration { max-width: 100%; height: auto; display: block; margin: 0.2em auto 1em auto; }
+div.texte p { margin: 0 0 0.55em 0; text-align: justify; text-indent: 1.3em; }
+div.texte p.premier { text-indent: 0; }
+div.texte h2 { font-size: 1.12em; margin: 1.1em 0 0.45em 0; text-align: left; text-indent: 0; }
+div.texte h3 { font-size: 1.02em; margin: 0.9em 0 0.35em 0; text-align: left; }
+div.texte ul, div.texte ol { margin: 0.4em 0 0.8em 1.4em; }
+div.texte li { margin-bottom: 0.25em; text-align: left; }
+div.texte blockquote { margin: 0.7em 1.4em; font-style: italic; }
+div.texte table { border-collapse: collapse; margin: 0.6em 0; font-size: 0.9em; }
+div.texte td, div.texte th { border: 1px solid #999; padding: 0.2em 0.4em; }
+p.fin { text-align: center; margin: 1.2em 0 0.8em 0; font-size: 1.1em; }
+p.note { font-family: sans-serif; font-size: 0.8em; color: #444; margin: 1em 0 0.5em 0;
+         border-top: 1px dotted #777; padding-top: 0.5em; text-align: left; }
+p.source { font-family: sans-serif; font-size: 0.76em; color: #444; margin: 0;
+           text-align: left; word-break: break-all; }
+
+/* --- Sommaire --- */
+.sommaire h1 { font-size: 2.2em; line-height: 1; margin: 0.3em 0 0.1em 0; text-align: center; }
+.sommaire p.soustitre { font-family: sans-serif; font-size: 0.85em; letter-spacing: 0.15em;
+                        text-transform: uppercase; text-align: center; color: #333; margin: 0; }
+.sommaire p.date { text-align: center; font-style: italic; margin: 0.5em 0 0.9em 0;
+                   border-top: 2px solid #000; border-bottom: 1px solid #000; padding: 0.45em 0; }
+.sommaire p.edito { font-style: italic; margin: 0 0 1.2em 0; text-align: justify; }
+.sommaire h2 { font-family: sans-serif; font-size: 0.85em; letter-spacing: 0.12em;
+               text-transform: uppercase; margin: 1.2em 0 0.4em 0;
+               border-bottom: 1px solid #000; padding-bottom: 0.2em; }
+.sommaire p.entree { margin: 0 0 0.75em 0; text-align: left; line-height: 1.3; }
+.sommaire p.entree a { text-decoration: none; font-weight: bold; color: #000; }
+.sommaire span.num { font-family: sans-serif; font-weight: bold; color: #555; }
+.sommaire span.chapeau { display: block; font-size: 0.9em; color: #222; margin-top: 0.1em; }
+.sommaire span.source { display: block; font-family: sans-serif; font-size: 0.72em; color: #555; }
+.sommaire p.pied { font-family: sans-serif; font-size: 0.75em; color: #555; text-align: center;
+                   margin-top: 1.5em; border-top: 1px solid #000; padding-top: 0.5em; }
 """
+
+
+def truncate_fragment(frag: str, max_chars: int) -> tuple[str, bool]:
+    """Coupe le texte à la fin d'un paragraphe au-delà de max_chars. Retourne (xhtml, coupé)."""
+    if not frag or max_chars <= 0:
+        return frag, False
+    from lxml import etree
+
+    try:
+        root = etree.fromstring("<div>" + frag + "</div>")
+    except etree.XMLSyntaxError:
+        return frag, False
+    kept, total, cut = [], 0, False
+    for el in root:
+        txt = "".join(el.itertext())
+        if kept and total + len(txt) > max_chars:
+            cut = True
+            break
+        kept.append(el)
+        total += len(txt)
+        if total >= max_chars:
+            cut = True
+            break
+    # Ne pas finir sur un intertitre.
+    while kept and kept[-1].tag in ("h2", "h3"):
+        kept.pop(); cut = True
+    out = "\n".join(etree.tostring(e, method="xml", encoding="unicode") for e in kept)
+    return out, cut
+
+
+def mark_first_paragraph(frag: str) -> str:
+    return re.sub(r"^(\s*)<p>", r'\1<p class="premier">', frag, count=1)
+
+
+def drop_duplicate_lead(frag: str, resume: str) -> str:
+    """Retire le premier paragraphe s'il répète le résumé du flux (chapô de la page)."""
+    if not frag or not resume:
+        return frag
+    m = re.match(r"\s*<p>(.*?)</p>", frag, re.S)
+    if not m:
+        return frag
+    norm = lambda t: re.sub(r"\W+", " ", html.unescape(re.sub(r"<[^>]+>", "", t)).lower()).strip()  # noqa: E731
+    a, b = norm(m.group(1)), norm(resume)
+    if a and (a[:80] == b[:80] or a in b or b in a):
+        return frag[m.end():].lstrip()
+    return frag
+
+
+def reading_time(text: str) -> str:
+    minutes = max(1, round(len(text.split()) / 200))
+    return f"{minutes} min"
 
 
 def load_edition(cfg: dict) -> tuple[dict, dict]:
@@ -497,9 +572,12 @@ def build(cfg: dict, skip_fetch: bool = False) -> Path:
         if not skip_fetch:
             full = fetch_fulltext(cand)
         body = html_to_xhtml_fragment(full["html"], cand["titre"])
+        body = drop_duplicate_lead(body, cand.get("resume", ""))
         texte_court = len(strip_html(body)) < 600
+        body, coupe = truncate_fragment(body, int(cfg.get("longueur_max_article", 4000)))
+        body = mark_first_paragraph(body)
         image = None if skip_fetch else fetch_image(full["image"])
-        return rub, art, cand, body, texte_court, image, full.get("auteur")
+        return rub, art, cand, body, texte_court, coupe, image, full.get("auteur")
 
     with ThreadPoolExecutor(max_workers=6) as pool:
         prepared = list(pool.map(prepare, selected))
@@ -523,6 +601,7 @@ def build(cfg: dict, skip_fetch: bool = False) -> Path:
     toc = []
     sommaire_parts = [
         f'<h1>{esc(titre_journal)}</h1>',
+        f'<p class="soustitre">{esc(cfg.get("sous_titre", ""))}</p>',
         f'<p class="date">{esc(date_fr(date).capitalize())}</p>',
     ]
     if edition.get("edito"):
@@ -531,7 +610,8 @@ def build(cfg: dict, skip_fetch: bool = False) -> Path:
     n = 0
     current_rub = None
     rub_links = []
-    for rub, art, cand, body, texte_court, image, auteur in prepared:
+    total_words = 0
+    for rub, art, cand, body, texte_court, coupe, image, auteur in prepared:
         n += 1
         fname = f"art{n:02d}.xhtml"
         if rub is not current_rub:
@@ -547,55 +627,64 @@ def build(cfg: dict, skip_fetch: bool = False) -> Path:
                 when = w.strftime("%d/%m à %Hh%M")
             except ValueError:
                 when = ""
-        meta = " · ".join(x for x in [cand["source"], auteur or "", when] if x)
+        plain = strip_html(body) if body else cand["resume"]
+        total_words += len(plain.split())
+        duree = reading_time(plain)
+        meta = " · ".join(x for x in [cand["source"], auteur or "", when, "lecture " + duree] if x)
 
-        parts = [f"<h1>{esc(art['titre'])}</h1>", f'<p class="meta">{esc(meta)}</p>',
+        parts = [f'<p class="kicker">{esc(rub["nom"])}</p>',
+                 f'<h1 class="titre">{esc(art["titre"])}</h1>',
+                 f'<p class="meta">{esc(meta)}</p>',
                  f'<p class="chapeau">{esc(art["chapeau"])}</p>']
         if image:
             img_name = f"images/img{n:02d}.jpg"
             book.add_item(epub.EpubItem(uid=f"img{n:02d}", file_name=img_name,
                                         media_type="image/jpeg", content=image))
-            parts.append(f'<img class="illustration" src="../{img_name}" alt=""/>')
+            parts.append(f'<img class="illustration" src="{img_name}" alt=""/>')
         if body:
-            parts.append(body)
+            parts.append('<div class="texte">' + body + '</div>')
             if texte_court:
-                parts.append('<p class="note">Le texte intégral n’a pas pu être récupéré '
-                             '(article réservé aux abonnés ou page protégée). '
-                             'Résumé fourni par la source :</p>')
-                parts.append(f"<p>{esc(cand['resume'])}</p>")
+                parts.append('<p class="note">Texte intégral indisponible (article réservé '
+                             'aux abonnés ou page protégée). Résumé fourni par la source :</p>')
+                parts.append(f'<p>{esc(cand["resume"])}</p>')
+            elif coupe:
+                parts.append('<p class="note">Article abrégé pour la lecture du matin. '
+                             'La suite est en ligne.</p>')
         else:
-            parts.append(f"<p>{esc(cand['resume'])}</p>")
-            parts.append('<p class="note">Le texte intégral n’a pas pu être récupéré.</p>')
-        parts.append(f'<p class="lien">Lire en ligne : {esc(cand["lien"])}</p>')
+            parts.append(f'<div class="texte"><p class="premier">{esc(cand["resume"])}</p></div>')
+            parts.append('<p class="note">Texte intégral indisponible.</p>')
+        parts.append('<p class="fin">◆</p>')
+        parts.append(f'<p class="source">{esc(cand["source"])} — {esc(cand["lien"])}</p>')
 
-        ch = epub.EpubHtml(title=art["titre"], file_name=f"text/{fname}", lang="fr")
+        ch = epub.EpubHtml(title=art["titre"], file_name=fname, lang="fr")
         ch.content = ('<html xmlns="http://www.w3.org/1999/xhtml"><head><title>'
                       + esc(art["titre"]) + '</title></head><body>'
                       + "\n".join(parts) + "</body></html>")
         ch.add_item(style)
         book.add_item(ch)
         chapters.append(ch)
-        rub_links.append(epub.Link(f"text/{fname}", art["titre"], f"art{n:02d}"))
+        rub_links.append(epub.Link(fname, art["titre"], f"art{n:02d}"))
         sommaire_parts.append(
-            f'<p class="entree"><a href="{fname}">{esc(art["titre"])}</a>'
+            f'<p class="entree"><span class="num">{n}.</span> <a href="{fname}">{esc(art["titre"])}</a>'
             f'<span class="chapeau">{esc(art["chapeau"])}</span>'
-            f'<span class="source">{esc(cand["source"])}</span></p>'
+            f'<span class="source">{esc(cand["source"])} · {duree}</span></p>'
         )
+    sommaire_parts.append(f'<p class="pied">{n} articles · environ {reading_time(" ".join(["mot"] * total_words))} de lecture</p>')
     if current_rub is not None:
         toc.append((epub.Section(current_rub["nom"]), rub_links))
 
-    sommaire = epub.EpubHtml(title="Sommaire", file_name="text/sommaire.xhtml", lang="fr")
+    sommaire = epub.EpubHtml(title="Sommaire", file_name="sommaire.xhtml", lang="fr")
     sommaire.content = ('<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Sommaire'
-                        '</title></head><body class="sommaire">'
-                        + "\n".join(sommaire_parts) + "</body></html>")
+                        '</title></head><body><div class="sommaire">'
+                        + "\n".join(sommaire_parts) + "</div></body></html>")
     sommaire.add_item(style)
     book.add_item(sommaire)
 
-    book.toc = [epub.Link("text/sommaire.xhtml", "Sommaire", "sommaire")] + toc
+    book.toc = [epub.Link("sommaire.xhtml", "Sommaire", "sommaire")] + toc
     book.add_item(epub.EpubNcx())
     book.add_item(epub.EpubNav())
     book.spine = ["cover", sommaire] + chapters
-    book.guide = [{"type": "toc", "title": "Sommaire", "href": "text/sommaire.xhtml"}]
+    book.guide = [{"type": "toc", "title": "Sommaire", "href": "sommaire.xhtml"}]
 
     EDITIONS.mkdir(exist_ok=True)
     out = EDITIONS / f"{date.isoformat()}.epub"

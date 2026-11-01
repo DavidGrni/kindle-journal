@@ -27,7 +27,7 @@ assemble. Tout se fait en français.
    `editions/AAAA-MM-JJ.epub`, copie le fichier dans `latest.epub` et supprime
    les éditions au-delà de `editions_conservees`.
 6. Vérifier que `latest.epub` existe, pèse plus de 50 Ko et que `unzip -l latest.epub`
-   liste bien un fichier `text/artNN.xhtml` par article.
+   liste bien un fichier `artNN.xhtml` par article.
 7. Committer et pousser sur `main` : `editions/AAAA-MM-JJ.epub`, `latest.epub`
    et les éventuelles suppressions. Message : `Édition du AAAA-MM-JJ (N articles)`.
    Ne pas committer le dossier `work/`.

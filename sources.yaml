@@ -7,11 +7,15 @@ sous_titre: "Revue de presse du matin"
 fuseau: Europe/Paris
 
 # Nombre d'articles visé dans l'édition (l'agent peut s'en écarter d'un ou deux).
-articles_par_jour: 12
+articles_par_jour: 8
 # Nombre d'articles minimum et maximum par rubrique retenue.
 quota_par_rubrique:
   min: 1
-  max: 4
+  max: 3
+
+# Longueur maximale du texte d'un article, en caractères (coupé à la fin d'un
+# paragraphe au-delà, avec un renvoi vers l'article en ligne).
+longueur_max_article: 3500
 
 # Collecte : un article plus ancien que ce délai est ignoré.
 max_age_heures: 30
@@ -23,7 +27,7 @@ editions_conservees: 30
 # Consignes pour le tri et la rédaction. Écrites pour l'agent qui compose l'édition.
 ligne_editoriale: |
   Journal d'actualité générale française, lu le matin sur une liseuse, en
-  une trentaine de minutes.
+  une vingtaine de minutes : huit articles environ, jamais plus de dix.
   - Retenir ce qui aide à comprendre l'actualité : analyses, enquêtes,
     reportages, explications de fond, portraits. Écarter les dépêches brutes,
     les « en direct », les brèves de quelques lignes, les sujets people,
@@ -32,7 +36,7 @@ ligne_editoriale: |
     complète ou la mieux écrite, même si plusieurs sources le traitent.
   - Chercher l'équilibre entre les rubriques (international, France,
     économie, société, sciences et environnement, culture). Pas plus de
-    quatre articles dans une rubrique, aucune rubrique n'est obligatoire.
+    trois articles dans une rubrique, aucune rubrique n'est obligatoire.
   - Varier les sources : ne pas composer l'édition avec un seul titre.
   - Les titres sont réécrits en français, informatifs et sobres, sans
     point d'exclamation ni suspense artificiel, 90 caractères au plus.

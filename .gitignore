@@ -6,3 +6,4 @@ __pycache__/
 # Fichiers copiés depuis la session parente, hors du journal
 dl/
 *.koplugin/
+.claude/
