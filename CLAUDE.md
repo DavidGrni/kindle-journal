@@ -6,20 +6,23 @@ assemble. Tout se fait en français.
 
 ## Procédure
 
-1. Installer les dépendances si nécessaire :
-   `python3 -m pip install -q -r requirements.txt`
+1. Installer les dépendances dans un environnement virtuel (les paquets
+   système de l'environnement cloud peuvent être cassés, Pillow notamment) :
+   `python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt`
+   Utiliser ensuite `.venv/bin/python` pour toutes les commandes du script.
 2. Collecter les articles récents :
-   `python3 build_journal.py collect`
+   `.venv/bin/python build_journal.py collect`
    Le script écrit `work/candidates.json` et affiche la liste
    `[id] (source / rubrique) titre`. Lis le fichier JSON pour les résumés.
 3. Lire `sources.yaml` : la clé `ligne_editoriale` donne les goûts du lecteur,
    `articles_par_jour` le nombre d'articles visé, `quota_par_rubrique` les
    bornes par rubrique, `rubriques` l'ordre des rubriques.
 4. Composer l'édition dans `work/edition.json` (format ci-dessous) : choisir
-   les articles, les ranger par rubrique, réécrire chaque titre et écrire un
+   les articles (`articles_par_jour` à deux près, jamais plus de
+   `articles_par_jour` + 2), les ranger par rubrique, réécrire chaque titre et écrire un
    chapeau de deux phrases à partir du résumé fourni. Ne jamais inventer un
    fait absent du résumé. Un article n'apparaît qu'une fois.
-5. Assembler : `python3 build_journal.py build`
+5. Assembler : `.venv/bin/python build_journal.py build`
    Le script récupère le texte complet et une image par article, écrit
    `editions/AAAA-MM-JJ.epub`, copie le fichier dans `latest.epub` et supprime
    les éditions au-delà de `editions_conservees`.

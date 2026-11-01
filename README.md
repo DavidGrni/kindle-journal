@@ -26,14 +26,14 @@ https://raw.githubusercontent.com/<compte>/kindle-journal/main/latest.epub
 
 ## Comment une édition est fabriquée
 
-1. `python3 build_journal.py collect` lit tous les flux de `sources.yaml`,
+1. `build_journal.py collect` lit tous les flux de `sources.yaml`,
    écarte les articles trop anciens ou exclus (directs, vidéos, sport…),
    dédoublonne et écrit `work/candidates.json`.
 2. L'agent lit les candidats et la `ligne_editoriale`, choisit les articles,
    les range par rubrique, réécrit les titres et rédige un chapeau de deux
    phrases par article dans `work/edition.json`. Aucun appel d'API : c'est
    l'agent de la routine qui fait ce travail.
-3. `python3 build_journal.py build` récupère le texte complet de chaque
+3. `build_journal.py build` récupère le texte complet de chaque
    article retenu (trafilatura), télécharge une image par article, la passe
    en niveaux de gris et la réduit pour l'écran 758 × 1024, puis écrit l'EPUB
    avec ebooklib. L'édition est copiée dans `latest.epub` et les éditions au
