@@ -1,0 +1,133 @@
+# Configuration du journal Kindle.
+# Modifiez ce fichier pour changer les sources, les rubriques, les quotas
+# ou la ligne éditoriale. L'agent de la routine le lit à chaque fabrication.
+
+titre: "Le Journal"
+sous_titre: "Revue de presse du matin"
+fuseau: Europe/Paris
+
+# Nombre d'articles visé dans l'édition (l'agent peut s'en écarter d'un ou deux).
+articles_par_jour: 12
+# Nombre d'articles minimum et maximum par rubrique retenue.
+quota_par_rubrique:
+  min: 1
+  max: 4
+
+# Collecte : un article plus ancien que ce délai est ignoré.
+max_age_heures: 30
+# Nombre maximal d'articles gardés par flux lors de la collecte.
+max_par_flux: 15
+# Nombre d'éditions conservées dans editions/ (les plus anciennes sont supprimées).
+editions_conservees: 30
+
+# Consignes pour le tri et la rédaction. Écrites pour l'agent qui compose l'édition.
+ligne_editoriale: |
+  Journal d'actualité générale française, lu le matin sur une liseuse, en
+  une trentaine de minutes.
+  - Retenir ce qui aide à comprendre l'actualité : analyses, enquêtes,
+    reportages, explications de fond, portraits. Écarter les dépêches brutes,
+    les « en direct », les brèves de quelques lignes, les sujets people,
+    les résultats sportifs et les contenus promotionnels.
+  - Un même événement n'apparaît qu'une fois : garder la version la plus
+    complète ou la mieux écrite, même si plusieurs sources le traitent.
+  - Chercher l'équilibre entre les rubriques (international, France,
+    économie, société, sciences et environnement, culture). Pas plus de
+    quatre articles dans une rubrique, aucune rubrique n'est obligatoire.
+  - Varier les sources : ne pas composer l'édition avec un seul titre.
+  - Les titres sont réécrits en français, informatifs et sobres, sans
+    point d'exclamation ni suspense artificiel, 90 caractères au plus.
+  - Le chapeau fait exactement deux phrases : la première dit le fait,
+    la seconde dit pourquoi il compte ou ce qu'il faut en retenir.
+    Il est écrit à partir du résumé fourni, sans inventer de détail.
+  - L'éditorial d'ouverture (facultatif) fait trois phrases au plus et
+    présente le fil de la journée.
+
+# Rubriques dans l'ordre d'apparition dans le journal.
+rubriques:
+  - À la une
+  - International
+  - France
+  - Économie
+  - Société
+  - Planète et sciences
+  - Culture et idées
+
+# Exclusions appliquées à la collecte (expressions régulières, casse ignorée).
+exclusions:
+  titres:
+    - "^en direct"
+    - "^direct\\b"
+    - "\\blive\\b"
+    - "horoscope"
+    - "\\b(loto|euromillions)\\b"
+    - "programme tv"
+    - "^(podcast|vidéo|video|diaporama|quiz|jeu concours)\\b"
+    - "^revue de presse"
+    - "^le résumé de la nuit"
+    - "^(athlétisme|tennis|football|rugby|cyclisme|formule 1|ligue 1|basket|handball|natation|golf|boxe|mma|judo|ski)\\b"
+  liens:
+    - "/live/"
+    - "/direct/"
+    - "/video/"
+    - "/videos/"
+    - "/podcast"
+    - "/sport/"
+    - "/sports/"
+    - "/football/"
+    - "/rugby/"
+    - "/tennis/"
+
+# Flux RSS. « rubrique » est le classement proposé par défaut ; l'agent peut
+# ranger un article dans une autre rubrique si le sujet s'y prête mieux.
+flux:
+  - nom: Le Monde
+    url: https://www.lemonde.fr/rss/une.xml
+    rubrique: À la une
+  - nom: Le Monde
+    url: https://www.lemonde.fr/international/rss_full.xml
+    rubrique: International
+  - nom: Le Monde
+    url: https://www.lemonde.fr/politique/rss_full.xml
+    rubrique: France
+  - nom: Le Monde
+    url: https://www.lemonde.fr/economie/rss_full.xml
+    rubrique: Économie
+  - nom: Le Monde
+    url: https://www.lemonde.fr/societe/rss_full.xml
+    rubrique: Société
+  - nom: Le Monde
+    url: https://www.lemonde.fr/planete/rss_full.xml
+    rubrique: Planète et sciences
+  - nom: Le Monde
+    url: https://www.lemonde.fr/sciences/rss_full.xml
+    rubrique: Planète et sciences
+  - nom: Le Monde
+    url: https://www.lemonde.fr/culture/rss_full.xml
+    rubrique: Culture et idées
+  - nom: France Info
+    url: https://www.francetvinfo.fr/titres.rss
+    rubrique: À la une
+  - nom: France Info
+    url: https://www.francetvinfo.fr/monde.rss
+    rubrique: International
+  - nom: France Info
+    url: https://www.francetvinfo.fr/economie.rss
+    rubrique: Économie
+  - nom: Courrier international
+    url: https://www.courrierinternational.com/feed/all/rss.xml
+    rubrique: International
+  - nom: Le Figaro
+    url: https://www.lefigaro.fr/rss/figaro_actualites.xml
+    rubrique: À la une
+  - nom: Le Figaro
+    url: https://www.lefigaro.fr/rss/figaro_international.xml
+    rubrique: International
+  - nom: La Croix
+    url: https://www.la-croix.com/RSS/UNIVERS
+    rubrique: Société
+  - nom: Ouest-France
+    url: https://www.ouest-france.fr/rss/une
+    rubrique: France
+  - nom: The Conversation
+    url: https://theconversation.com/fr/articles.atom
+    rubrique: Culture et idées
