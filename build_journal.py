@@ -380,11 +380,14 @@ def make_cover(cfg: dict, date: dt.date, rubriques: list[dict]) -> bytes:
 
     # Sommaire : on réduit la taille des caractères jusqu'à ce que tout tienne.
     bottom = H - 110
-    for size_rub, size_item in ((34, 26), (30, 24), (28, 22), (26, 20), (24, 18)):
-        line_rub, line_item, gap = int(size_rub * 1.35), int(size_item * 1.3), int(size_item * 0.6)
-        needed = sum(line_rub + gap + line_item * len(r["articles"]) for r in rubriques)
+    max_items = 4
+    for size_rub, size_item in ((34, 26), (30, 24), (28, 22), (26, 20), (24, 18), (22, 17), (21, 16)):
+        line_rub, line_item, gap = int(size_rub * 1.3), int(size_item * 1.3), int(size_item * 0.5)
+        needed = sum(line_rub + gap + line_item * min(len(r["articles"]), max_items) for r in rubriques)
         if y + needed <= bottom:
             break
+    else:
+        max_items = 2
     f_rub = _font(size_rub, bold=True)
     f_item = _font(size_item)
     for rub in rubriques:
@@ -392,7 +395,7 @@ def make_cover(cfg: dict, date: dt.date, rubriques: list[dict]) -> bytes:
             break
         d.text((margin, y), rub["nom"], font=f_rub, fill=0)
         y += line_rub
-        for art in rub["articles"]:
+        for art in rub["articles"][:max_items]:
             if y + line_item > bottom:
                 break
             t = art["titre"]
