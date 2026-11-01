@@ -3,3 +3,6 @@ work/
 __pycache__/
 *.pyc
 .DS_Store
+# Fichiers copiés depuis la session parente, hors du journal
+dl/
+*.koplugin/
