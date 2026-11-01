@@ -22,13 +22,18 @@ assemble. Tout se fait en français.
    `articles_par_jour` + 2), les ranger par rubrique, réécrire chaque titre et écrire un
    chapeau de deux phrases à partir du résumé fourni. Ne jamais inventer un
    fait absent du résumé. Un article n'apparaît qu'une fois.
-5. Assembler : `.venv/bin/python build_journal.py build`
+5. Point bourse : `collect` a aussi écrit `work/marche.json` (indices avec
+   variations, actualité des marchés). Lire `bourse.consignes` dans
+   `sources.yaml`, choisir la valeur à suivre et remplir la clé `bourse` de
+   `work/edition.json` (format ci-dessous). Le symbole est au format CNBC
+   (voir les exemples dans `sources.yaml`) ; `build` récupère les cotations.
+6. Assembler : `.venv/bin/python build_journal.py build`
    Le script récupère le texte complet et une image par article, écrit
    `editions/AAAA-MM-JJ.epub`, copie le fichier dans `latest.epub` et supprime
    les éditions au-delà de `editions_conservees`.
-6. Vérifier que `latest.epub` existe, pèse plus de 50 Ko et que `unzip -l latest.epub`
-   liste bien un fichier `artNN.xhtml` par article.
-7. Committer et pousser sur `main` : `editions/AAAA-MM-JJ.epub`, `latest.epub`
+7. Vérifier que `latest.epub` existe, pèse plus de 50 Ko et que `unzip -l latest.epub`
+   liste bien un fichier `artNN.xhtml` par article et `bourse.xhtml`.
+8. Committer et pousser sur `main` : `editions/AAAA-MM-JJ.epub`, `latest.epub`
    et les éventuelles suppressions. Message : `Édition du AAAA-MM-JJ (N articles)`.
    Ne pas committer le dossier `work/`.
 
@@ -52,9 +57,22 @@ pousser et terminer en expliquant la cause.
         }
       ]
     }
-  ]
+  ],
+  "bourse": {
+    "commentaire": "Deux ou trois phrases sur la séance et la tendance, à partir des chiffres de work/marche.json et de l'actualité.",
+    "valeur": {
+      "symbole": "TTE-FR",
+      "nom": "TotalEnergies",
+      "pourquoi": "Quatre à six phrases : le fait déclencheur, ce que le marché attend dans les mois à venir, les risques.",
+      "a_surveiller": "Une ou deux phrases : le prochain rendez-vous concret."
+    }
+  }
 }
 ```
+
+- `bourse.commentaire` et `bourse.valeur` sont obligatoires quand `sources.yaml`
+  contient une section `bourse`. Les chiffres (cours, variations, PER) sont
+  ajoutés par `build` : ne pas les recopier dans les textes.
 
 - `id` est l'identifiant donné par `collect`.
 - `date` est la date du jour (fuseau Europe/Paris), celle de `date_edition`

@@ -182,6 +182,7 @@ def collect(cfg: dict) -> dict:
     with open(WORK / "candidates.json", "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=1)
     log(f"{len(candidates)} candidats écrits dans {WORK / 'candidates.json'}")
+    collect_market(cfg)
     return data
 
 
@@ -395,7 +396,7 @@ def make_cover(cfg: dict, date: dt.date, rubriques: list[dict]) -> bytes:
             break
         d.text((margin, y), rub["nom"], font=f_rub, fill=0)
         y += line_rub
-        for art in rub["articles"][:max_items]:
+        for art in rub["articles"][: (99 if rub["nom"] == "Point bourse" else max_items)]:
             if y + line_item > bottom:
                 break
             t = art["titre"]
@@ -405,7 +406,7 @@ def make_cover(cfg: dict, date: dt.date, rubriques: list[dict]) -> bytes:
             y += line_item
         y += gap
 
-    nb = sum(len(r["articles"]) for r in rubriques)
+    nb = sum(len(r["articles"]) for r in rubriques if r["nom"] != "Point bourse")
     f_foot = _font(24)
     foot = f"{nb} articles · Édition du {date.strftime('%d/%m/%Y')}"
     d.line([margin, H - 90, W - margin, H - 90], fill=0, width=1)
@@ -414,6 +415,279 @@ def make_cover(cfg: dict, date: dt.date, rubriques: list[dict]) -> bytes:
     out = io.BytesIO()
     im.save(out, "PNG", optimize=True)
     return out.getvalue()
+
+
+
+# -------------------------------------------------------------------- bourse
+
+CNBC_QUOTE = ("https://quote.cnbc.com/quote-html-webservice/restQuote/symbolType/symbol"
+              "?symbols={symbols}&requestMethod=itv&noform=1&partnerId=2&fund=1&exthrs=1&output=json")
+CNBC_BARS = "https://ts-api.cnbc.com/harmony/app/charts/1Y.json?symbol={symbol}"
+NBSP = " "  # espace fine insécable
+
+
+def fetch_json(url: str):
+    import urllib.request
+
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json,*/*"})
+    with urllib.request.urlopen(req, timeout=25) as r:
+        return json.loads(r.read().decode("utf-8", "replace"))
+
+
+def parse_num(value) -> float | None:
+    if value is None:
+        return None
+    t = str(value).replace(",", "").replace("%", "").replace("+", "").strip()
+    try:
+        return float(t)
+    except ValueError:
+        return None
+
+
+def fmt_num(x: float | None, decimals: int = 2) -> str:
+    if x is None:
+        return "–"
+    neg = x < 0
+    s = f"{abs(x):,.{decimals}f}".replace(",", NBSP).replace(".", ",")
+    return ("−" if neg else "") + s
+
+
+def fmt_pct(x: float | None) -> str:
+    if x is None:
+        return "–"
+    if abs(x) < 0.05:
+        return "0,0" + NBSP + "%"
+    sign = "+" if x > 0 else "−"
+    return f"{sign}{abs(x):.1f}".replace(".", ",") + NBSP + "%"
+
+
+def fetch_quotes(symbols: list[str]) -> dict:
+    import urllib.parse
+
+    if not symbols:
+        return {}
+    url = CNBC_QUOTE.format(symbols=urllib.parse.quote("|".join(symbols), safe=""))
+    data = fetch_json(url)
+    quotes = data.get("FormattedQuoteResult", {}).get("FormattedQuote", [])
+    if isinstance(quotes, dict):
+        quotes = [quotes]
+    return {q.get("symbol"): q for q in quotes if q.get("code") in (0, "0", None)}
+
+
+def fetch_bars(symbol: str) -> list[tuple[dt.date, float]]:
+    import urllib.parse
+
+    data = fetch_json(CNBC_BARS.format(symbol=urllib.parse.quote(symbol, safe="")))
+    out = []
+    for bar in data.get("barData", {}).get("priceBars", []) or []:
+        close = parse_num(bar.get("close"))
+        t = str(bar.get("tradeTime", ""))[:8]
+        if close and len(t) == 8:
+            out.append((dt.date(int(t[:4]), int(t[4:6]), int(t[6:8])), close))
+    out.sort()
+    return out
+
+
+def market_stats(symbol: str, quote: dict | None, bars: list) -> dict:
+    """Statistiques lisibles pour un indice ou une action."""
+    st = {"symbole": symbol, "nom": (quote or {}).get("name") or symbol,
+          "devise": (quote or {}).get("currencyCode") or "", "ok": bool(quote)}
+    last = parse_num((quote or {}).get("last"))
+    if last is None and bars:
+        last = bars[-1][1]
+    st["dernier"] = last
+    st["date"] = (quote or {}).get("last_time") or (bars[-1][0].isoformat() if bars else None)
+    st["var_jour"] = parse_num((quote or {}).get("change_pct"))
+    st["haut_52"] = parse_num((quote or {}).get("yrhiprice"))
+    st["bas_52"] = parse_num((quote or {}).get("yrloprice"))
+    st["per"] = parse_num((quote or {}).get("pe"))
+    st["rendement"] = parse_num((quote or {}).get("dividendyield"))
+    st["capitalisation"] = (quote or {}).get("mktcapView")
+    closes = [c for _, c in bars]
+    if last and closes:
+        if bars[-1][1] != last and st["date"] and bars[-1][0].isoformat() < st["date"]:
+            closes = closes + [last]  # cotation du jour absente de l'historique
+        def var(n):
+            return (last / closes[-1 - n] - 1) * 100 if len(closes) > n and closes[-1 - n] else None
+        st["var_semaine"] = var(5)
+        st["var_mois"] = var(21)
+        st["var_12m"] = var(min(252, len(closes) - 1)) if len(closes) > 60 else None
+        year = int(st["date"][:4]) if st["date"] else dt.date.today().year
+        prev = [c for d, c in bars if d.year < year]
+        st["var_annee"] = (last / prev[-1] - 1) * 100 if prev else None
+        st["closes_mois"] = closes[-23:]
+    else:
+        st.update({"var_semaine": None, "var_mois": None, "var_12m": None, "var_annee": None, "closes_mois": []})
+    return st
+
+
+def quote_symbols(cfg: dict, extra: list[str] = ()) -> list[dict]:
+    """Récupère cotations et historique pour les indices configurés (+ symboles en plus)."""
+    conf = cfg.get("bourse") or {}
+    symbols = [i["symbole"] for i in conf.get("indices", []) or []] + [s for s in extra if s]
+    if not symbols:
+        return []
+    try:
+        quotes = fetch_quotes(symbols)
+    except Exception as e:  # noqa: BLE001
+        log(f"  !! cotations indisponibles : {e}")
+        quotes = {}
+    names = {i["symbole"]: i.get("nom") for i in conf.get("indices", []) or []}
+    out = []
+    for sym in symbols:
+        try:
+            bars = fetch_bars(sym)
+        except Exception as e:  # noqa: BLE001
+            log(f"  !! historique indisponible pour {sym} : {e}")
+            bars = []
+        st = market_stats(sym, quotes.get(sym), bars)
+        if names.get(sym):
+            st["nom"] = names[sym]
+        out.append(st)
+    return out
+
+
+def collect_market(cfg: dict) -> dict | None:
+    conf = cfg.get("bourse") or {}
+    if not conf.get("indices"):
+        return None
+    log("Cotations…")
+    indices = quote_symbols(cfg)
+    for st in indices:
+        st.pop("closes_mois", None)
+    actualite = []
+    for feed in conf.get("flux", []) or []:
+        try:
+            parsed = feedparser.parse(feed["url"], agent=USER_AGENT)
+            for entry in parsed.entries[:12]:
+                actualite.append({"source": feed["nom"], "titre": strip_html(entry.get("title", "")),
+                                  "resume": strip_html(entry.get("summary", ""))[:400],
+                                  "lien": entry.get("link", "")})
+        except Exception as e:  # noqa: BLE001
+            log(f"  !! flux bourse {feed['nom']} : {e}")
+    data = {"indices": indices, "actualite": actualite}
+    WORK.mkdir(exist_ok=True)
+    with open(WORK / "marche.json", "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=1)
+    for st in indices:
+        log(f"  {st['nom']:14} {fmt_num(st['dernier'])} ({fmt_pct(st['var_jour'])} jour, "
+            f"{fmt_pct(st['var_semaine'])} semaine, {fmt_pct(st['var_annee'])} depuis le 1er janvier)")
+    return data
+
+
+def sparkline_png(closes: list[float], width: int = 600, height: int = 150) -> bytes | None:
+    if len(closes) < 3:
+        return None
+    from PIL import Image, ImageDraw
+
+    im = Image.new("L", (width, height), 255)
+    d = ImageDraw.Draw(im)
+    lo, hi = min(closes), max(closes)
+    span = (hi - lo) or 1.0
+    m = 12
+    pts = []
+    for i, c in enumerate(closes):
+        x = m + i * (width - 2 * m) / (len(closes) - 1)
+        y = height - m - (c - lo) / span * (height - 2 * m)
+        pts.append((x, y))
+    # Aplat sous la courbe, ligne de base, courbe.
+    d.polygon(pts + [(pts[-1][0], height - m), (pts[0][0], height - m)], fill=228)
+    d.line([(m, height - m), (width - m, height - m)], fill=150, width=1)
+    d.line(pts, fill=0, width=3)
+    d.ellipse([pts[-1][0] - 5, pts[-1][1] - 5, pts[-1][0] + 5, pts[-1][1] + 5], fill=0)
+    f = _font(15)
+    d.text((m, 1), fmt_num(hi), font=f, fill=110)
+    d.text((m, height - m - 18), fmt_num(lo), font=f, fill=110)
+    out = io.BytesIO()
+    im.save(out, "PNG", optimize=True)
+    return out.getvalue()
+
+
+def stats_table(st: dict, with_fundamentals: bool = False) -> str:
+    rows = [("Semaine", fmt_pct(st.get("var_semaine"))), ("Un mois", fmt_pct(st.get("var_mois"))),
+            (f"Depuis le 1er janvier", fmt_pct(st.get("var_annee"))), ("Douze mois", fmt_pct(st.get("var_12m"))),
+            ("Plus haut 52 semaines", fmt_num(st.get("haut_52"))), ("Plus bas 52 semaines", fmt_num(st.get("bas_52")))]
+    if with_fundamentals:
+        rows += [("PER", fmt_num(st.get("per"), 1)), ("Capitalisation", esc(st.get("capitalisation") or "–")),
+                 ("Rendement", fmt_pct(st.get("rendement")) if st.get("rendement") is not None else "–")]
+    cells = "".join(f"<tr><td>{esc(a)}</td><td class=\"val\">{b}</td></tr>" for a, b in rows)
+    return f'<table class="stats">{cells}</table>'
+
+
+def build_bourse(cfg: dict, edition: dict, book, style, zone) -> tuple | None:
+    """Construit la page Point bourse. Retourne (chapitre, lignes pour la couverture) ou None."""
+    from ebooklib import epub
+
+    conf = cfg.get("bourse") or {}
+    if not conf.get("indices"):
+        return None
+    ed = edition.get("bourse") or {}
+    valeur = ed.get("valeur") or {}
+    sym_valeur = (valeur.get("symbole") or "").strip()
+    stats = quote_symbols(cfg, [sym_valeur] if sym_valeur else [])
+    indices = [st for st in stats if st["symbole"] != sym_valeur or not sym_valeur]
+    st_valeur = next((st for st in stats if sym_valeur and st["symbole"] == sym_valeur), None)
+    if sym_valeur and st_valeur and not st_valeur.get("ok"):
+        log(f"  !! symbole boursier inconnu : {sym_valeur}")
+
+    date_cot = next((st["date"] for st in indices if st.get("date")), None)
+    sous = f"Clôture du {date_fr(dt.date.fromisoformat(date_cot))}" if date_cot else ""
+    parts = ['<p class="kicker">Point bourse</p>', '<h1 class="titre">Les marchés</h1>',
+             f'<p class="meta">{esc(sous)}</p>']
+    cover_lines = []
+    n_img = 0
+    for st in indices:
+        n_img += 1
+        parts.append('<div class="indice">')
+        parts.append(f'<h2 class="indice">{esc(st["nom"])} <span class="cours">{fmt_num(st["dernier"])}'
+                     f' <span class="var">{fmt_pct(st["var_jour"])}</span></span></h2>')
+        png = sparkline_png(st.get("closes_mois") or [])
+        if png:
+            name = f"images/bourse{n_img:02d}.png"
+            book.add_item(epub.EpubItem(uid=f"bourse{n_img:02d}", file_name=name, media_type="image/png", content=png))
+            parts.append(f'<img class="courbe" src="{name}" alt=""/>')
+            parts.append('<p class="legende">Un mois de clôtures</p>')
+        parts.append(stats_table(st))
+        parts.append('</div>')
+        cover_lines.append(f"{st['nom']} : {fmt_num(st['dernier'])} ({fmt_pct(st['var_jour'])})")
+    if ed.get("commentaire"):
+        parts.append(f'<p class="commentaire">{esc(ed["commentaire"])}</p>')
+
+    if valeur:
+        nom = valeur.get("nom") or (st_valeur or {}).get("nom") or sym_valeur
+        parts.append('<div class="valeur">')
+        parts.append(f'<p class="kicker">Valeur à suivre</p>')
+        titre = nom + (f" ({sym_valeur})" if sym_valeur else "")
+        if st_valeur and st_valeur.get("ok"):
+            devise = {"USD": "$", "EUR": "€", "GBP": "£", "CHF": "CHF", "JPY": "¥"}.get(st_valeur["devise"], st_valeur["devise"])
+            parts.append(f'<h2 class="indice">{esc(titre)} <span class="cours">{fmt_num(st_valeur["dernier"])}{NBSP}{esc(devise)}'
+                         f' <span class="var">{fmt_pct(st_valeur["var_jour"])}</span></span></h2>')
+            png = sparkline_png(st_valeur.get("closes_mois") or [])
+            if png:
+                book.add_item(epub.EpubItem(uid="bourse_valeur", file_name="images/bourse_valeur.png",
+                                            media_type="image/png", content=png))
+                parts.append('<img class="courbe" src="images/bourse_valeur.png" alt=""/>')
+                parts.append('<p class="legende">Un mois de clôtures</p>')
+            parts.append(stats_table(st_valeur, with_fundamentals=True))
+        else:
+            parts.append(f'<h2 class="indice">{esc(titre)}</h2>')
+            if sym_valeur:
+                parts.append('<p class="note">Cotation indisponible pour ce symbole.</p>')
+        if valeur.get("pourquoi"):
+            parts.append(f'<p class="premier">{esc(valeur["pourquoi"])}</p>')
+        if valeur.get("a_surveiller"):
+            parts.append(f'<p><strong>À surveiller.</strong> {esc(valeur["a_surveiller"])}</p>')
+        parts.append('</div>')
+        cover_lines.append(f"Valeur à suivre : {nom}")
+    parts.append('<p class="note">Données CNBC. Point d’information, pas un conseil en investissement : '
+                 'les performances passées ne préjugent pas des performances futures.</p>')
+
+    ch = epub.EpubHtml(title="Point bourse", file_name="bourse.xhtml", lang="fr")
+    ch.content = ('<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Point bourse</title></head><body>'
+                  + "\n".join(parts) + "</body></html>")
+    ch.add_item(style)
+    book.add_item(ch)
+    return ch, cover_lines
 
 
 # -------------------------------------------------------------------- build
@@ -464,7 +738,20 @@ p.source { font-family: sans-serif; font-size: 0.76em; color: #444; margin: 0;
 .sommaire span.source { display: block; font-family: sans-serif; font-size: 0.72em; color: #555; }
 .sommaire p.pied { font-family: sans-serif; font-size: 0.75em; color: #555; text-align: center;
                    margin-top: 1.5em; border-top: 1px solid #000; padding-top: 0.5em; }
+/* --- Point bourse --- */
+div.indice, div.valeur { margin: 0.6em 0 1.2em 0; }
+h2.indice { font-size: 1.15em; margin: 0.8em 0 0.3em 0; text-align: left; border-bottom: 1px solid #000; padding-bottom: 0.2em; }
+h2.indice span.cours { font-weight: normal; }
+h2.indice span.var { font-family: sans-serif; font-size: 0.8em; }
+img.courbe { width: 100%; height: auto; display: block; margin: 0.3em 0 0 0; }
+p.legende { font-family: sans-serif; font-size: 0.7em; color: #555; margin: 0 0 0.4em 0; text-align: right; }
+table.stats { width: 100%; border-collapse: collapse; font-size: 0.9em; margin: 0.3em 0 0.6em 0; }
+table.stats td { padding: 0.15em 0.2em; border-bottom: 1px dotted #999; }
+table.stats td.val { text-align: right; font-family: sans-serif; white-space: nowrap; }
+p.commentaire { font-style: italic; margin: 0.6em 0 1em 0; text-align: justify; }
+div.valeur p { text-align: justify; margin: 0 0 0.6em 0; }
 """
+
 
 
 def truncate_fragment(frag: str, max_chars: int) -> tuple[str, bool]:
@@ -590,12 +877,16 @@ def build(cfg: dict, skip_fetch: bool = False) -> Path:
     book.add_metadata("DC", "date", date.isoformat())
     book.add_metadata("DC", "description", cfg.get("sous_titre", ""))
 
-    cover_png = make_cover(cfg, date, edition["rubriques"])
-    book.set_cover("cover.png", cover_png, create_page=True)
-
     style = epub.EpubItem(uid="style", file_name="style/journal.css",
                           media_type="text/css", content=CSS.encode("utf-8"))
     book.add_item(style)
+
+    bourse = build_bourse(cfg, edition, book, style, zone)
+    cover_rubriques = list(edition["rubriques"])
+    if bourse and bourse[1]:
+        cover_rubriques.append({"nom": "Point bourse", "articles": [{"titre": t} for t in bourse[1]]})
+    cover_png = make_cover(cfg, date, cover_rubriques)
+    book.set_cover("cover.png", cover_png, create_page=True)
 
     chapters = []
     toc = []
@@ -669,6 +960,10 @@ def build(cfg: dict, skip_fetch: bool = False) -> Path:
             f'<span class="chapeau">{esc(art["chapeau"])}</span>'
             f'<span class="source">{esc(cand["source"])} · {duree}</span></p>'
         )
+    if bourse:
+        sommaire_parts.append('<h2>Point bourse</h2>')
+        sommaire_parts.append('<p class="entree"><a href="bourse.xhtml">Les marchés et la valeur à suivre</a>'
+                              f'<span class="source">{esc(" · ".join(bourse[1]))}</span></p>')
     sommaire_parts.append(f'<p class="pied">{n} articles · environ {reading_time(" ".join(["mot"] * total_words))} de lecture</p>')
     if current_rub is not None:
         toc.append((epub.Section(current_rub["nom"]), rub_links))
@@ -681,6 +976,9 @@ def build(cfg: dict, skip_fetch: bool = False) -> Path:
     book.add_item(sommaire)
 
     book.toc = [epub.Link("sommaire.xhtml", "Sommaire", "sommaire")] + toc
+    if bourse:
+        book.toc.append(epub.Link("bourse.xhtml", "Point bourse", "bourse"))
+        chapters.append(bourse[0])
     book.add_item(epub.EpubNcx())
     book.add_item(epub.EpubNav())
     book.spine = ["cover", sommaire] + chapters

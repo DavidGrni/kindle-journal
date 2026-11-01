@@ -135,3 +135,30 @@ flux:
   - nom: The Conversation
     url: https://theconversation.com/fr/articles.atom
     rubrique: Culture et idées
+
+# Point bourse : page en fin de journal avec les indices ci-dessous et une
+# « valeur à suivre » choisie chaque nuit par l'agent. Symboles au format CNBC :
+# indices « .SPX », « .FCHI », « .STOXX50E » ; actions américaines « NVDA »,
+# Paris « AIR-FR », Francfort « SAP-DE », Amsterdam « ASML-NL », Londres « SHEL-GB ».
+bourse:
+  indices:
+    - symbole: ".SPX"
+      nom: "S&P 500"
+    - symbole: ".FCHI"
+      nom: "CAC 40"
+  consignes: |
+    Choisir chaque jour une valeur à suivre dans les mois à venir, cotée aux
+    États-Unis ou en Europe, en partant d'un fait récent : résultats, contrat,
+    changement de direction, mouvement sectoriel, décision politique, tension
+    géopolitique. Le fait doit venir des articles collectés ou de work/marche.json.
+    Expliquer en quatre à six phrases ce qui la rend intéressante : le
+    déclencheur, ce que le marché attend dans les mois qui viennent, les risques.
+    Donner un rendez-vous concret à surveiller (publication, assemblée, décision).
+    Ton factuel, ni recommandation d'achat ni de vente, pas de prédiction de cours.
+    Varier les secteurs et ne pas reprendre la valeur de la veille.
+  # Flux consultés seulement pour le point bourse (contexte de marché).
+  flux:
+    - nom: CNBC Markets
+      url: https://www.cnbc.com/id/10000664/device/rss/rss.html
+    - nom: Le Monde Économie
+      url: https://www.lemonde.fr/economie/rss_full.xml
