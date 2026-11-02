@@ -423,6 +423,18 @@ def make_cover(cfg: dict, date: dt.date, rubriques: list[dict]) -> bytes:
 CNBC_QUOTE = ("https://quote.cnbc.com/quote-html-webservice/restQuote/symbolType/symbol"
               "?symbols={symbols}&requestMethod=itv&noform=1&partnerId=2&fund=1&exthrs=1&output=json")
 CNBC_BARS = "https://ts-api.cnbc.com/harmony/app/charts/1Y.json?symbol={symbol}"
+# Sources de repli quand CNBC refuse la connexion (c'est le cas depuis le cloud).
+YAHOO_CHART = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=1y&interval=1d"
+CBOE_QUOTE = "https://cdn.cboe.com/api/global/delayed_quotes/quotes/{symbol}.json"
+CBOE_BARS = "https://cdn.cboe.com/api/global/delayed_quotes/charts/historical/{symbol}.json"
+# Correspondance des symboles CNBC vers Yahoo Finance : indices, puis suffixe de place pour les actions.
+YAHOO_INDICES = {".SPX": "^GSPC", ".DJI": "^DJI", ".IXIC": "^IXIC", ".NDX": "^NDX", ".VIX": "^VIX",
+                 ".FCHI": "^FCHI", ".STOXX50E": "^STOXX50E", ".GDAXI": "^GDAXI", ".FTSE": "^FTSE",
+                 ".SSMI": "^SSMI", ".N225": "^N225", ".HSI": "^HSI"}
+YAHOO_PLACES = {"FR": ".PA", "DE": ".DE", "NL": ".AS", "GB": ".L", "IT": ".MI", "ES": ".MC", "CH": ".SW",
+                "BE": ".BR", "SE": ".ST", "DK": ".CO", "PT": ".LS", "AT": ".VI", "FI": ".HE", "NO": ".OL",
+                "IE": ".IR", "JP": ".T", "HK": ".HK", "CA": ".TO"}
+CBOE_INDICES = {".SPX": "_SPX", ".DJI": "_DJI", ".NDX": "_NDX", ".VIX": "_VIX"}
 NBSP = " "  # espace fine insécable
 
 
@@ -438,6 +450,8 @@ def parse_num(value) -> float | None:
     if value is None:
         return None
     t = str(value).replace(",", "").replace("%", "").replace("+", "").strip()
+    if t.upper() == "UNCH":
+        return 0.0
     try:
         return float(t)
     except ValueError:
@@ -488,15 +502,86 @@ def fetch_bars(symbol: str) -> list[tuple[dt.date, float]]:
     return out
 
 
+def yahoo_symbol(symbol: str) -> str:
+    """Symbole CNBC (.FCHI, TTE-FR, NVDA) vers symbole Yahoo Finance (^FCHI, TTE.PA, NVDA)."""
+    if symbol in YAHOO_INDICES:
+        return YAHOO_INDICES[symbol]
+    if symbol.startswith("."):
+        return "^" + symbol[1:]
+    base, sep, place = symbol.rpartition("-")
+    if sep and place in YAHOO_PLACES:
+        return base + YAHOO_PLACES[place]
+    return symbol
+
+
+def fetch_yahoo(symbol: str) -> tuple[dict | None, list]:
+    """Cotation et un an de clôtures via l'API graphique de Yahoo Finance."""
+    import urllib.parse
+
+    data = fetch_json(YAHOO_CHART.format(symbol=urllib.parse.quote(yahoo_symbol(symbol), safe="")))
+    result = (data.get("chart") or {}).get("result") or []
+    if not result:
+        return None, []
+    r = result[0]
+    meta = r.get("meta") or {}
+    closes = (((r.get("indicators") or {}).get("quote") or [{}])[0].get("close")) or []
+    bars = []
+    for ts, close in zip(r.get("timestamp") or [], closes):
+        if close is not None and ts:
+            bars.append((dt.datetime.fromtimestamp(int(ts), dt.timezone.utc).date(), float(close)))
+    bars.sort()
+    last = parse_num(meta.get("regularMarketPrice"))
+    if last is None:
+        return None, bars
+    prev = parse_num(meta.get("previousClose"))
+    if prev is None and len(bars) > 1:
+        prev = bars[-2][1] if abs(bars[-1][1] - last) < 1e-6 else bars[-1][1]
+    ts = meta.get("regularMarketTime")
+    date = dt.datetime.fromtimestamp(int(ts), dt.timezone.utc).date().isoformat() if ts else None
+    quote = {"name": meta.get("longName") or meta.get("shortName") or symbol, "last": last,
+             "currencyCode": meta.get("currency") or "", "last_time": date,
+             "change_pct": (last / prev - 1) * 100 if prev else None, "_source": "Yahoo Finance"}
+    return quote, bars
+
+
+def fetch_cboe(symbol: str) -> tuple[dict | None, list]:
+    """Cotation différée et historique Cboe : indices américains et actions cotées aux États-Unis."""
+    cboe = CBOE_INDICES.get(symbol)
+    if cboe is None and re.fullmatch(r"[A-Z]{1,5}", symbol):
+        cboe = symbol
+    if cboe is None:
+        return None, []
+    q = fetch_json(CBOE_QUOTE.format(symbol=cboe)).get("data") or {}
+    last = parse_num(q.get("current_price"))
+    if last is None:
+        return None, []
+    bars = []
+    try:
+        for bar in fetch_json(CBOE_BARS.format(symbol=cboe)).get("data") or []:
+            close, date = parse_num(bar.get("close")), str(bar.get("date") or "")[:10]
+            if close and len(date) == 10:
+                bars.append((dt.date.fromisoformat(date), close))
+    except Exception as e:  # noqa: BLE001
+        log(f"  !! historique Cboe indisponible pour {symbol} : {e}")
+    bars.sort()
+    quote = {"name": symbol, "last": last, "currencyCode": "USD",
+             "last_time": str(q.get("last_trade_time") or "")[:10] or None,
+             "change_pct": parse_num(q.get("price_change_percent")), "_source": "Cboe"}
+    return quote, bars[-300:]
+
+
 def market_stats(symbol: str, quote: dict | None, bars: list) -> dict:
     """Statistiques lisibles pour un indice ou une action."""
     st = {"symbole": symbol, "nom": (quote or {}).get("name") or symbol,
-          "devise": (quote or {}).get("currencyCode") or "", "ok": bool(quote)}
+          "devise": (quote or {}).get("currencyCode") or "", "ok": bool(quote),
+          "source": (quote or {}).get("_source") or ("CNBC" if quote else None)}
     last = parse_num((quote or {}).get("last"))
     if last is None and bars:
         last = bars[-1][1]
     st["dernier"] = last
     st["date"] = (quote or {}).get("last_time") or (bars[-1][0].isoformat() if bars else None)
+    if st["date"]:
+        st["date"] = str(st["date"])[:10]
     st["var_jour"] = parse_num((quote or {}).get("change_pct"))
     st["haut_52"] = parse_num((quote or {}).get("yrhiprice"))
     st["bas_52"] = parse_num((quote or {}).get("yrloprice"))
@@ -516,6 +601,10 @@ def market_stats(symbol: str, quote: dict | None, bars: list) -> dict:
         prev = [c for d, c in bars if d.year < year]
         st["var_annee"] = (last / prev[-1] - 1) * 100 if prev else None
         st["closes_mois"] = closes[-23:]
+        if st["haut_52"] is None and len(closes) > 60:
+            st["haut_52"] = max(closes[-252:])
+        if st["bas_52"] is None and len(closes) > 60:
+            st["bas_52"] = min(closes[-252:])
     else:
         st.update({"var_semaine": None, "var_mois": None, "var_12m": None, "var_annee": None, "closes_mois": []})
     return st
@@ -530,17 +619,29 @@ def quote_symbols(cfg: dict, extra: list[str] = ()) -> list[dict]:
     try:
         quotes = fetch_quotes(symbols)
     except Exception as e:  # noqa: BLE001
-        log(f"  !! cotations indisponibles : {e}")
+        log(f"  !! cotations CNBC indisponibles : {e}")
         quotes = {}
     names = {i["symbole"]: i.get("nom") for i in conf.get("indices", []) or []}
     out = []
     for sym in symbols:
-        try:
-            bars = fetch_bars(sym)
-        except Exception as e:  # noqa: BLE001
-            log(f"  !! historique indisponible pour {sym} : {e}")
-            bars = []
-        st = market_stats(sym, quotes.get(sym), bars)
+        quote, bars = quotes.get(sym), []
+        if quote:
+            try:
+                bars = fetch_bars(sym)
+            except Exception as e:  # noqa: BLE001
+                log(f"  !! historique CNBC indisponible pour {sym} : {e}")
+        if not quote:
+            # Repli : première source qui connaît le symbole
+            for nom_source, fetcher in (("Yahoo Finance", fetch_yahoo), ("Cboe", fetch_cboe)):
+                try:
+                    quote, bars = fetcher(sym)
+                except Exception as e:  # noqa: BLE001
+                    log(f"  !! {nom_source} indisponible pour {sym} : {e}")
+                    quote, bars = None, []
+                if quote:
+                    log(f"  {sym} : cotation {nom_source}")
+                    break
+        st = market_stats(sym, quote, bars)
         if names.get(sym):
             st["nom"] = names[sym]
         out.append(st)
@@ -679,8 +780,9 @@ def build_bourse(cfg: dict, edition: dict, book, style, zone) -> tuple | None:
             parts.append(f'<p><strong>À surveiller.</strong> {esc(valeur["a_surveiller"])}</p>')
         parts.append('</div>')
         cover_lines.append(f"Valeur à suivre : {nom}")
-    parts.append('<p class="note">Données CNBC. Point d’information, pas un conseil en investissement : '
-                 'les performances passées ne préjugent pas des performances futures.</p>')
+    sources = sorted({st["source"] for st in stats if st.get("source")}) or ["CNBC"]
+    parts.append(f'<p class="note">Données {esc(", ".join(sources))}. Point d’information, pas un conseil '
+                 'en investissement : les performances passées ne préjugent pas des performances futures.</p>')
 
     ch = epub.EpubHtml(title="Point bourse", file_name="bourse.xhtml", lang="fr")
     ch.content = ('<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Point bourse</title></head><body>'
