@@ -435,6 +435,18 @@ YAHOO_PLACES = {"FR": ".PA", "DE": ".DE", "NL": ".AS", "GB": ".L", "IT": ".MI", 
                 "BE": ".BR", "SE": ".ST", "DK": ".CO", "PT": ".LS", "AT": ".VI", "FI": ".HE", "NO": ".OL",
                 "IE": ".IR", "JP": ".T", "HK": ".HK", "CA": ".TO"}
 CBOE_INDICES = {".SPX": "_SPX", ".DJI": "_DJI", ".NDX": "_NDX", ".VIX": "_VIX"}
+# TradingView (scanner public) : statistiques complètes sans historique.
+TV_SCAN = "https://scanner.tradingview.com/global/scan"
+TV_INDICES = {".SPX": "SP:SPX", ".DJI": "DJ:DJI", ".IXIC": "NASDAQ:IXIC", ".NDX": "NASDAQ:NDX", ".VIX": "CBOE:VIX",
+              ".FCHI": "EURONEXT:PX1", ".STOXX50E": "SIX:SX5E", ".GDAXI": "XETR:DAX", ".FTSE": "FTSE:UKX",
+              ".SSMI": "SIX:SMI", ".N225": "TVC:NI225", ".HSI": "HSI:HSI"}
+TV_PLACES = {"FR": ["EURONEXT"], "NL": ["EURONEXT"], "BE": ["EURONEXT"], "PT": ["EURONEXT"], "DE": ["XETR"],
+             "GB": ["LSE"], "IT": ["MIL"], "ES": ["BME"], "CH": ["SIX"], "SE": ["OMXSTO"], "DK": ["OMXCOP"],
+             "FI": ["OMXHEX"], "NO": ["OSL"], "AT": ["VIE"], "IE": ["EURONEXT"], "JP": ["TSE"], "HK": ["HKEX"],
+             "CA": ["TSX"]}
+TV_COLUMNS = ["name", "description", "close", "change", "Perf.W", "Perf.1M", "Perf.YTD", "Perf.Y",
+              "price_52_week_high", "price_52_week_low", "price_earnings_ttm", "dividends_yield",
+              "market_cap_basic", "currency", "time"]
 NBSP = " "  # espace fine insécable
 
 
@@ -544,6 +556,65 @@ def fetch_yahoo(symbol: str) -> tuple[dict | None, list]:
     return quote, bars
 
 
+def tv_tickers(symbol: str) -> list[str]:
+    """Symbole CNBC vers les tickers TradingView possibles (plusieurs places pour les actions américaines)."""
+    if symbol in TV_INDICES:
+        return [TV_INDICES[symbol]]
+    if symbol.startswith("."):
+        return []
+    base, sep, place = symbol.rpartition("-")
+    if sep and place in TV_PLACES:
+        return [f"{ex}:{base}" for ex in TV_PLACES[place]]
+    if re.fullmatch(r"[A-Z.]{1,6}", symbol):
+        return [f"NASDAQ:{symbol}", f"NYSE:{symbol}", f"AMEX:{symbol}"]
+    return []
+
+
+def fmt_cap(value: float | None, currency: str) -> str | None:
+    if not value:
+        return None
+    unit = {"USD": "$", "EUR": "€", "GBP": "£"}.get(currency, currency)
+    if value >= 1e9:
+        return f"{fmt_num(value / 1e9, 0 if value >= 1e11 else 1)}{NBSP}Md{NBSP}{unit}"
+    return f"{fmt_num(value / 1e6, 0)}{NBSP}M{NBSP}{unit}"
+
+
+def fetch_tradingview(symbol: str) -> tuple[dict | None, list]:
+    """Statistiques (cours, variations, 52 semaines, PER, capitalisation) via le scanner public TradingView."""
+    import urllib.request
+
+    tickers = tv_tickers(symbol)
+    if not tickers:
+        return None, []
+    body = json.dumps({"symbols": {"tickers": tickers}, "columns": TV_COLUMNS}).encode()
+    req = urllib.request.Request(TV_SCAN, data=body, method="POST",
+                                 headers={"User-Agent": USER_AGENT, "Content-Type": "application/json",
+                                          "Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=25) as r:
+        data = json.loads(r.read().decode("utf-8", "replace"))
+    rows = [row for row in data.get("data") or [] if row.get("d") and row["d"][2] is not None]
+    if not rows:
+        return None, []
+    row = dict(zip(TV_COLUMNS, rows[0]["d"]))
+    last = parse_num(row.get("close"))
+    if last is None:
+        return None, []
+    exchange = rows[0]["s"].split(":")[0]
+    currency = row.get("currency") or {"SP": "USD", "DJ": "USD", "NASDAQ": "USD", "NYSE": "USD", "AMEX": "USD",
+                                       "CBOE": "USD", "EURONEXT": "EUR", "XETR": "EUR", "MIL": "EUR", "BME": "EUR",
+                                       "VIE": "EUR", "SIX": "CHF", "FTSE": "GBP", "LSE": "GBP"}.get(exchange, "")
+    ts = row.get("time")
+    quote = {"name": row.get("description") or row.get("name") or symbol, "last": last, "currencyCode": currency,
+             "last_time": dt.datetime.fromtimestamp(int(ts), dt.timezone.utc).date().isoformat() if ts else None,
+             "change_pct": parse_num(row.get("change")), "yrhiprice": row.get("price_52_week_high"),
+             "yrloprice": row.get("price_52_week_low"), "pe": row.get("price_earnings_ttm"),
+             "dividendyield": row.get("dividends_yield"), "mktcapView": fmt_cap(parse_num(row.get("market_cap_basic")), currency),
+             "_perf": {"var_semaine": parse_num(row.get("Perf.W")), "var_mois": parse_num(row.get("Perf.1M")),
+                       "var_annee": parse_num(row.get("Perf.YTD")), "var_12m": parse_num(row.get("Perf.Y"))},
+             "_source": "TradingView"}
+    return quote, []
+
+
 def fetch_cboe(symbol: str) -> tuple[dict | None, list]:
     """Cotation différée et historique Cboe : indices américains et actions cotées aux États-Unis."""
     cboe = CBOE_INDICES.get(symbol)
@@ -607,6 +678,9 @@ def market_stats(symbol: str, quote: dict | None, bars: list) -> dict:
             st["bas_52"] = min(closes[-252:])
     else:
         st.update({"var_semaine": None, "var_mois": None, "var_12m": None, "var_annee": None, "closes_mois": []})
+    for key, value in ((quote or {}).get("_perf") or {}).items():
+        if value is not None or st.get(key) is None:
+            st[key] = value
     return st
 
 
@@ -631,8 +705,9 @@ def quote_symbols(cfg: dict, extra: list[str] = ()) -> list[dict]:
             except Exception as e:  # noqa: BLE001
                 log(f"  !! historique CNBC indisponible pour {sym} : {e}")
         if not quote:
-            # Repli : première source qui connaît le symbole
-            for nom_source, fetcher in (("Yahoo Finance", fetch_yahoo), ("Cboe", fetch_cboe)):
+            # Repli : première source qui connaît le symbole, puis un historique pour la courbe
+            for nom_source, fetcher in (("TradingView", fetch_tradingview), ("Yahoo Finance", fetch_yahoo),
+                                        ("Cboe", fetch_cboe)):
                 try:
                     quote, bars = fetcher(sym)
                 except Exception as e:  # noqa: BLE001
@@ -641,6 +716,16 @@ def quote_symbols(cfg: dict, extra: list[str] = ()) -> list[dict]:
                 if quote:
                     log(f"  {sym} : cotation {nom_source}")
                     break
+            if quote and not bars:
+                for nom_source, fetcher in (("Yahoo Finance", fetch_yahoo), ("Cboe", fetch_cboe)):
+                    try:
+                        _, bars = fetcher(sym)
+                    except Exception as e:  # noqa: BLE001
+                        log(f"  !! historique {nom_source} indisponible pour {sym} : {e}")
+                        bars = []
+                    if bars:
+                        log(f"  {sym} : historique {nom_source}")
+                        break
         st = market_stats(sym, quote, bars)
         if names.get(sym):
             st["nom"] = names[sym]
